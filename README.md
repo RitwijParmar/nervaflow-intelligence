@@ -16,6 +16,15 @@ NervaFlow compresses that synthesis into a single operator flow:
 2. run scenario,
 3. act on an evidence-backed recommendation.
 
+## At A Glance
+
+| Area | What to inspect |
+|---|---|
+| Operator experience | The public web flow and `/experience/simulate/` API return one decision packet instead of a dashboard full of disconnected metrics. |
+| Evidence layer | Vertex AI Search, fallback impact synthesis, and optional GenAI narrative refinement combine retrieved context with deterministic scoring. |
+| Data backbone | GDELT ingest, Discovery import, SQL observability, and billing-aware guardrails support the decision pipeline. |
+| Verification | Core Django tests, live endpoint health checks, and repository metrics are listed in the quantified results section. |
+
 ## Product direction
 
 - Old identity: `AetherChain` (engineering project name)
@@ -156,8 +165,8 @@ Validation:
 ### Setup
 
 ```bash
-git clone https://github.com/RitwijParmar/aetherchain-project.git
-cd aetherchain-project
+git clone https://github.com/RitwijParmar/nervaflow-intelligence.git
+cd nervaflow-intelligence
 python3 -m venv venv
 source venv/bin/activate
 pip install -r src/requirements.txt
