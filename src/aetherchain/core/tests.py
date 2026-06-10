@@ -24,7 +24,8 @@ from .management.commands.ingest_gdelt_discovery import (
 from .gcp_auth import access_token
 from .models import Alert
 from .retrieval import fetch_supporting_evidence
-from .tasks import _build_graph_lookup
+from .tasks import _build_graph_lookup, _normalize_graph_rows, normalize_string_list
+from .views import _build_scenario_payload, _clean_int, _decode_pubsub_envelope
 
 
 @override_settings(API_TOKEN='test-token')
@@ -162,6 +163,71 @@ class WorkerIngressTests(APITestCase):
         )
         self.assertEqual(response.status_code, 204)
         mock_run_impact_analysis.assert_called_once()
+
+
+class ScenarioInputSanitizationTests(SimpleTestCase):
+    def test_decode_pubsub_envelope_rejects_missing_message_data(self):
+        with self.assertRaisesMessage(ValueError, 'message.data'):
+            _decode_pubsub_envelope(json.dumps({'message': {}}).encode('utf-8'))
+
+    def test_build_scenario_payload_sanitizes_asset_scope_and_horizon(self):
+        payload, error = _build_scenario_payload(
+            {
+                'product_skus': ' SKU-1, sku-1\nSKU-2 ',
+                'route_ids': [' R-1 ', 'R-1'],
+                'context_note': 'x' * 400,
+                'horizon_days': '999',
+            }
+        )
+
+        self.assertIsNone(error)
+        self.assertEqual(payload['event_type'], 'Supply Network Disruption')
+        self.assertEqual(payload['product_skus'], ['SKU-1', 'SKU-2'])
+        self.assertEqual(payload['route_ids'], ['R-1'])
+        self.assertEqual(payload['horizon_days'], 180)
+        self.assertEqual(len(payload['context_note']), 280)
+
+    def test_clean_int_rejects_low_and_invalid_values(self):
+        self.assertIsNone(_clean_int('0', minimum=1, maximum=10))
+        self.assertIsNone(_clean_int('not-a-number', minimum=1, maximum=10))
+        self.assertEqual(_clean_int('50', minimum=1, maximum=10), 10)
+
+    def test_normalize_graph_rows_skips_empty_rows_and_fills_defaults(self):
+        rows = [
+            [None, 'R-2', '', 'Supplier A'],
+            ['SKU-3', None, 'Port A', ''],
+            [],
+            [None, None],
+        ]
+
+        normalized = _normalize_graph_rows(rows)
+
+        self.assertEqual(
+            normalized,
+            [
+                {
+                    'product_sku': 'UNKNOWN-SKU',
+                    'route_id': 'R-2',
+                    'port_name': '',
+                    'supplier_name': 'Supplier A',
+                },
+                {
+                    'product_sku': 'SKU-3',
+                    'route_id': 'UNASSIGNED-ROUTE',
+                    'port_name': 'Port A',
+                    'supplier_name': '',
+                },
+            ],
+        )
+
+    def test_normalize_string_list_deduplicates_and_caps_values(self):
+        normalized = normalize_string_list(
+            ' SKU-1,sku-1\nSKU-2,SKU-3,SKU-4 ',
+            max_items=3,
+            max_length=5,
+        )
+
+        self.assertEqual(normalized, ['SKU-1', 'SKU-2', 'SKU-3'])
 
 
 class PublicExperienceTests(APITestCase):
